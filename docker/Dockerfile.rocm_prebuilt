@@ -1,0 +1,47 @@
+ARG BASE_IMAGE=rocm/dev-ubuntu-22.04:7.0-complete
+
+FROM ${BASE_IMAGE} AS base
+ENV PATH=/opt/rocm/llvm/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ARG PYTHON_VERSION=3.12
+
+RUN mkdir -p /app
+WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y \
+    && apt-get install -y software-properties-common git curl sudo vim less libgfortran5 \
+    && for i in 1 2 3; do \
+        add-apt-repository -y ppa:deadsnakes/ppa && break || \
+        { echo "Attempt $i failed, retrying in 5s..."; sleep 5; }; \
+    done \
+    && apt-get update -y \
+    && apt-get install -y python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv \
+       python${PYTHON_VERSION}-lib2to3 python-is-python3  \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} \
+    && ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
+    && python3 --version && python3 -m pip --version
+
+FROM base AS dependencies
+COPY hacks/requirements.txt /app/requirements.txt
+COPY vllm/* /app/dependencies/
+
+FROM base AS final
+RUN --mount=type=bind,from=dependencies,src=/app,target=/install \
+    (find /install/dependencies -type f -name '*.whl' | grep -vP '/vllm-' | xargs pip install) \
+    && pip install -r /install/requirements.txt \
+    && pip install /install/dependencies/vllm*.whl \
+    && cp /install/dependencies/versions.txt /app/versions.txt
+
+ENV RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES=1
+ENV RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=1
+ENV TOKENIZERS_PARALLELISM=false
+
+# ENV that can improve safe tensor loading, and end-to-end time
+ENV SAFETENSORS_FAST_GPU=1
+
+# Performance environment variable.
+ENV HIP_FORCE_DEV_KERNARG=1
+
+CMD ["vllm"]

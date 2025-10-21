@@ -1,0 +1,72 @@
+#!/usr/bin/bash
+
+set -e
+
+VLLM_IMAGE_NAME=${VLLM_IMAGE_NAME:-itterative/vllm:v0.11.1-bitsandbytes}
+VLLM_CONTAINER_NAME="vllm"
+
+if command -v docker >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=docker
+elif command -v podman >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=podman
+else
+    echo "Error: Neither Docker nor Podman is installed or available in PATH." >&2
+    exit 1
+fi
+
+if [ ! -d ~/.cache/huggingface ]; then
+    mkdir -p ~/.cache/huggingface
+fi
+
+if [ ! -d ~/.vllm ]; then
+    mkdir -p ~/.vllm
+    echo "1" > ~/.vllm/version
+
+    mkdir -p ~/.vllm/configs
+    mkdir -p ~/.vllm/cache/comgr
+    mkdir -p ~/.vllm/cache/miopen
+    mkdir -p ~/.vllm/cache/vllm
+
+    cat <<'EOM' >~/.vllm/.env
+export HF_TOKEN=""
+
+export PYTORCH_TUNABLEOP_ENABLED=0
+export PYTORCH_TUNABLEOP_TUNING=0
+export PYTORCH_TUNABLEOP_FILENAME=/root/.vllm/pytorch_tunables.csv
+
+export MIOPEN_FIND_MODE=FAST
+export MIOPEN_FIND_ENFORCE=NONE
+EOM
+
+    cat <<'EOM' >~/.vllm/entry.sh
+#!/bin/bash
+
+if [ -f /root/.vllm/.env ]; then
+	source /root/.vllm/.env
+fi
+
+vllm "$@"
+EOM
+    chmod +x ~/.vllm/entry.sh
+fi
+
+$CONTAINER_RUNTIME run -it \
+    --group-add=video \
+    --ipc=host \
+    --cap-add=SYS_PTRACE  \
+    --security-opt seccomp=unconfined \
+    --device /dev/kfd \
+    --device /dev/dri \
+    -v ~/.cache/huggingface:/root/.cache/huggingface:Z \
+    -v ~/.vllm/entry.sh:/root/.vllm/entry.sh:Z \
+    -v ~/.vllm/.env:/root/.vllm/.env:Z \
+    -v ~/.vllm/configs:/root/.vllm/configs:z \
+    -v ~/.vllm/cache/comgr:/root/.cache/comgr:z \
+    -v ~/.vllm/cache/miopen:/root/.cache/miopen:z \
+    -v ~/.vllm/cache/vllm:/root/.cache/vllm:z \
+    --net=host \
+    --rm \
+    --name "$VLLM_CONTAINER_NAME" \
+    -w /root/.vllm/configs \
+    "$VLLM_IMAGE_NAME" \
+    /root/.vllm/entry.sh "$@"

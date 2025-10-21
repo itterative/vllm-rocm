@@ -1,0 +1,12 @@
+diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
+index 81745257d..c586fc58c 100644
+--- a/vllm/platforms/rocm.py
++++ b/vllm/platforms/rocm.py
+@@ -204,6 +204,7 @@ class RocmPlatform(Platform):
+         "mxfp4",
+         "petit_nvfp4",
+         "torchao",
++        "bitsandbytes",
+     ]
+ 
+     @classmethod
