@@ -76,16 +76,16 @@ One important file is `.vllm/.env` which can be used to pass environment variabl
 
 ```bash
 # hugggingface token for grabbing models
-HF_TOKEN=...
+export HF_TOKEN=...
 
 # pytorch tunable options (not sure if they work properly with vllm)
-PYTORCH_TUNABLEOP_ENABLED=1
-PYTORCH_TUNABLEOP_TUNING=1
-PYTORCH_TUNABLEOP_FILENAME=/root/.vllm/pytorch_tunables.csv
+export PYTORCH_TUNABLEOP_ENABLED=1
+export PYTORCH_TUNABLEOP_TUNING=1
+export PYTORCH_TUNABLEOP_FILENAME=/root/.vllm/pytorch_tunables.csv
 
 # miopen settings for reducing start-up times (specifically useful if using multimodal models since the visual layers are retuned by default when the resolution changes)
-MIOPEN_FIND_MODE=FAST
-MIOPEN_FIND_ENFORCE=NONE
+export MIOPEN_FIND_MODE=FAST
+export MIOPEN_FIND_ENFORCE=NONE
 ```
 
 ### configs
@@ -107,5 +107,4 @@ limit_mm_per_prompt.video: 0
 ```
 
 ## Available patches
-* patches/v0.11.1.patch - small changes to vllm that make it easier to build the docker image
-* hacks/bitsandbytes.patch - adds rocm's buildsandbytes to vllm (for quantization)
+* patches/v0.11.1.patch - adds rocm's buildsandbytes to vllm (for quantization)
