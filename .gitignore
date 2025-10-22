@@ -1,2 +1,3 @@
 vllm/*
 !vllm/_place_wheels_here
+export/*
