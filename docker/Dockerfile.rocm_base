@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=rocm/dev-ubuntu-22.04:7.0-complete
+ARG BASE_IMAGE=rocm/dev-ubuntu-22.04:6.4.3-complete
 ARG TRITON_BRANCH="f9e5bf54"
 ARG TRITON_REPO="https://github.com/ROCm/triton.git"
 ARG PYTORCH_BRANCH="b2fb6885"
@@ -7,17 +7,17 @@ ARG PYTORCH_REPO="https://github.com/ROCm/pytorch.git"
 ARG PYTORCH_VISION_REPO="https://github.com/pytorch/vision.git"
 ARG FA_BRANCH="navi_rotary_fix"
 ARG FA_REPO="https://github.com/Disty0/flash-attention"
-ARG AITER_BRANCH="2ab9f4cd"
-ARG AITER_REPO="https://github.com/ROCm/aiter.git"
-ARG BNB_REPO=https://github.com/ROCm/bitsandbytes
-ARG BNB_BRANCH=rocm_enabled
+# ARG AITER_BRANCH="2ab9f4cd"
+# ARG AITER_REPO="https://github.com/ROCm/aiter.git"
+ARG BNB_REPO="https://github.com/ROCm/bitsandbytes"
+ARG BNB_BRANCH="4fa939b"
 
 FROM ${BASE_IMAGE} AS base
 
 ENV PATH=/opt/rocm/llvm/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV ROCM_PATH=/opt/rocm
 ENV LD_LIBRARY_PATH=/opt/rocm/lib:/usr/local/lib:
-ARG PYTORCH_ROCM_ARCH=gfx90a;gfx942;gfx950;gfx1100;gfx1101;gfx1200;gfx1201;gfx1150;gfx1151
+ARG PYTORCH_ROCM_ARCH=gfx1101;gfx1100;gfx1200;gfx1201
 ENV PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH}
 ENV AITER_ROCM_ARCH=gfx942;gfx950
 
@@ -80,18 +80,18 @@ RUN cd vision && git checkout ${PYTORCH_VISION_BRANCH} \
 RUN mkdir -p /app/install && cp /app/pytorch/dist/*.whl /app/install \
     && cp /app/vision/dist/*.whl /app/install
 
-FROM base AS build_aiter
-ARG AITER_BRANCH
-ARG AITER_REPO
-RUN --mount=type=bind,from=build_pytorch,src=/app/install/,target=/install \
-    pip install /install/*.whl
-RUN git clone --recursive ${AITER_REPO}
-RUN cd aiter \
-    && git checkout ${AITER_BRANCH} \
-    && git submodule update --init --recursive \
-    && pip install -r requirements.txt
-RUN pip install pyyaml && cd aiter && PREBUILD_KERNELS=1 GPU_ARCHS=${AITER_ROCM_ARCH} python3 setup.py bdist_wheel --dist-dir=dist && ls /app/aiter/dist/*.whl
-RUN mkdir -p /app/install && cp /app/aiter/dist/*.whl /app/install
+# FROM base AS build_aiter
+# ARG AITER_BRANCH
+# ARG AITER_REPO
+# RUN --mount=type=bind,from=build_pytorch,src=/app/install/,target=/install \
+#     pip install /install/*.whl
+# RUN git clone --recursive ${AITER_REPO}
+# RUN cd aiter \
+#     && git checkout ${AITER_BRANCH} \
+#     && git submodule update --init --recursive \
+#     && pip install -r requirements.txt
+# RUN pip install pyyaml && cd aiter && PREBUILD_KERNELS=1 GPU_ARCHS=${AITER_ROCM_ARCH} python3 setup.py bdist_wheel --dist-dir=dist && ls /app/aiter/dist/*.whl
+# RUN mkdir -p /app/install && cp /app/aiter/dist/*.whl /app/install
 
 FROM base AS build_bitsandbytes
 ARG BNB_REPO
@@ -133,8 +133,8 @@ ARG PYTORCH_BRANCH
 ARG PYTORCH_VISION_BRANCH
 ARG PYTORCH_REPO
 ARG PYTORCH_VISION_REPO
-ARG AITER_BRANCH
-ARG AITER_REPO
+# ARG AITER_BRANCH
+# ARG AITER_REPO
 ARG BNB_REPO
 ARG BNB_BRANCH
 RUN echo "BASE_IMAGE: ${BASE_IMAGE}" > /app/versions.txt \
@@ -144,7 +144,7 @@ RUN echo "BASE_IMAGE: ${BASE_IMAGE}" > /app/versions.txt \
     && echo "PYTORCH_VISION_BRANCH: ${PYTORCH_VISION_BRANCH}" >> /app/versions.txt \
     && echo "PYTORCH_REPO: ${PYTORCH_REPO}" >> /app/versions.txt \
     && echo "PYTORCH_VISION_REPO: ${PYTORCH_VISION_REPO}" >> /app/versions.txt \
-    && echo "AITER_BRANCH: ${AITER_BRANCH}" >> /app/versions.txt \
-    && echo "AITER_REPO: ${AITER_REPO}" >> /app/versions.txt \
+    # && echo "AITER_BRANCH: ${AITER_BRANCH}" >> /app/versions.txt \
+    # && echo "AITER_REPO: ${AITER_REPO}" >> /app/versions.txt \
     && echo "BNB_REPO: ${BNB_REPO}" >> /app/versions.txt \
     && echo "BNB_BRANCH: ${BNB_BRANCH}" >> /app/versions.txt

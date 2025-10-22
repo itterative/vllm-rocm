@@ -54,7 +54,7 @@ export ROCM_ARCH=gfx1100
 # note: you can use either docker or podman (I use the latter)
 
 # build the base image
-podman build -t $VLLM_BASE_IMAGE_NAME --build-arg "PYTORCH_ROCM_ARCH=$ROCM_ARCH" --build-arg "AITER_ROCM_ARCH=$ROCM_ARCH" -f docker/Dockerfile.rocm_base .
+podman build -t $VLLM_BASE_IMAGE_NAME --build-arg "PYTORCH_ROCM_ARCH=$ROCM_ARCH" -f docker/Dockerfile.rocm_base .
 
 # then build your image
 podman build -t $VLLM_IMAGE_NAME --build-arg "BASE_IMAGE=$VLLM_BASE_IMAGE_NAME" -f docker/Dockerfile.rocm .
