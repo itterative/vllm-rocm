@@ -13,10 +13,8 @@ Pre-built wheels are available in the [releases](https://github.com/itterative/v
 At minimum, you'll need:
 * vllm
 * amdsmi
-* torch
-* torchvision
-* triton_kernels
-* triton
+* bitsandbites
+* versions.txt
 
 Once downloaded, run the following:
 ```bash
