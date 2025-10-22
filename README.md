@@ -41,7 +41,6 @@ Once you are done with building your image (and don't wish to rebuild it later o
 
 ```bash
 # replace the name if you want to
-export VLLM_BASE_IMAGE_NAME="itterative/vllm:v0.11.1-base"
 export VLLM_IMAGE_NAME="itterative/vllm:v0.11.1"
 export VLLM_PATCH="patches/v0.11.1.patch"
 
@@ -53,11 +52,8 @@ export ROCM_ARCH=gfx1100
 
 # note: you can use either docker or podman (I use the latter)
 
-# build the base image
-podman build -t $VLLM_BASE_IMAGE_NAME --build-arg "PYTORCH_ROCM_ARCH=$ROCM_ARCH" -f docker/Dockerfile.rocm_base .
-
 # then build your image
-podman build -t $VLLM_IMAGE_NAME --build-arg "BASE_IMAGE=$VLLM_BASE_IMAGE_NAME" -f docker/Dockerfile.rocm .
+podman build -t $VLLM_IMAGE_NAME -f docker/Dockerfile.rocm .
 
 # copy the executables
 cp hacks/bin/vllm ~/.local/bin/vllm

@@ -1,47 +1,165 @@
-# default base image
-ARG COMMON_WORKDIR=/app
+# ==============================================================================
+# BASE CONFIGURATION ARGUMENTS
+# ==============================================================================
+# Define base image and key dependencies as build arguments.
+# These can be overridden at build time for flexibility.
+
 ARG BASE_IMAGE=rocm/pytorch:rocm7.0.2_ubuntu24.04_py3.12_pytorch_release_2.8.0
-ARG VLLM_BASE_IMAGE=itterative/vllm-base:v0.11.0
+
 ARG VLLM_REPO=https://github.com/vllm-project/vllm.git
 ARG VLLM_BRANCH=releases/v0.11.1
 ARG VLLM_PATCH=patches/v0.11.1.patch
-ARG ARG_PYTORCH_ROCM_ARCH=gfx1101;gfx1100;gfx1200;gfx1201
 
-FROM ${BASE_IMAGE} AS base
+ARG BNB_REPO="https://github.com/ROCm/bitsandbytes"
+ARG BNB_BRANCH="4fa939b"
+
+ARG PYTORCH_ROCM_ARCH=gfx1101;gfx1100;gfx1200;gfx1201
+
+ARG COMMON_WORKDIR=/app
+
+
+# ==============================================================================
+# STAGE: Base Build Environment (base_build)
+# ==============================================================================
+
+FROM ${BASE_IMAGE} AS base_build
+
+ARG PYTORCH_ROCM_ARCH
+ENV PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH}
 
 # Install some basic utilities
 RUN apt-get update -q -y && apt-get install -q -y \
     sqlite3 libsqlite3-dev libfmt-dev libmsgpack-dev libsuitesparse-dev \
     apt-transport-https ca-certificates wget curl
-# Remove sccache    
+
+# Remove sccache and use ccache
 RUN python3 -m pip install --upgrade pip
 RUN apt-get purge -y sccache; python3 -m pip uninstall -y sccache; rm -f "$(which sccache)"
 RUN apt-get install -y ccache
+
 ARG COMMON_WORKDIR
 WORKDIR ${COMMON_WORKDIR}
 
+ENV DEBIAN_FRONTEND=noninteractive
 
-# -----------------------
-# vLLM fetch stages
-FROM base AS fetch_vllm
+RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
+    pip install -U packaging 'cmake<4' ninja wheel 'setuptools<80' pybind11 Cython
+
+
+# ==============================================================================
+# STAGE: Build amd-smi Python Wheel (build_amdsmi)
+# ==============================================================================
+
+FROM base_build AS build_amdsmi
+
+# Build amd-smi as a Python wheel from ROCM directory
+RUN cd /opt/rocm/share/amd_smi \
+    && pip wheel . --wheel-dir=dist
+
+# Copy built wheel to shared install directory
+RUN mkdir -p ${COMMON_WORKDIR}/install && cp /opt/rocm/share/amd_smi/dist/*.whl ${COMMON_WORKDIR}/install
+
+
+# ==============================================================================
+# STAGE: Build bitsandbytes for ROCm (build_bitsandbytes)
+# Note: This requires specific ROCm-compatible branch and CMake configuration.
+# ==============================================================================
+
+FROM base_build AS build_bitsandbytes
+
+# Configure ccache for reuse across compilation steps
+ENV CCACHE_DIR=/root/.cache/ccache
+
+ARG BNB_REPO
+ARG BNB_BRANCH
+
+# Clone bitsandbytes repository
+RUN git clone ${BNB_REPO} bitsandbytes
+RUN cd bitsandbytes \
+    && git checkout ${BNB_BRANCH} \
+    && git submodule update --init
+
+# Configure and compile using CMake with HIP backend
+RUN --mount=type=cache,id=ccache,target=/root/.cache/ccache \
+    cd bitsandbytes \
+    && cmake \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_HIP_COMPILER_LAUNCHER=ccache \
+        -DCOMPUTE_BACKEND=hip \
+        -DBNB_ROCM_ARCH=${PYTORCH_ROCM_ARCH} \
+        -S . \
+    && make
+
+# Build Python wheel
+RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
+    cd bitsandbytes \
+    && python3 setup.py bdist_wheel --dist-dir=dist
+
+# Copy resulting wheel to shared location
+RUN mkdir -p ${COMMON_WORKDIR}/install && \
+    cp ${COMMON_WORKDIR}/bitsandbytes/dist/*.whl ${COMMON_WORKDIR}/install
+
+
+# ==============================================================================
+# STAGE: Collect Dependencies (final_build)
+# ==============================================================================
+
+FROM base_build AS final_build
+
+# Create directory to hold dependency wheels
+RUN mkdir -p /install-dependencies
+
+# Copy wheels from previous build stages
+RUN --mount=type=bind,from=build_amdsmi,src=${COMMON_WORKDIR}/install/,target=/install \
+    cp /install/*.whl /install-dependencies
+
+RUN --mount=type=bind,from=build_bitsandbytes,src=${COMMON_WORKDIR}/install/,target=/install \
+    cp /install/*.whl /install-dependencies
+
+# Record version information
+ARG BASE_IMAGE
+ARG BNB_REPO
+ARG BNB_BRANCH
+RUN echo "BASE_IMAGE: ${BASE_IMAGE}" > ${COMMON_WORKDIR}/versions.txt \
+    && echo "BNB_REPO: ${BNB_REPO}" >> ${COMMON_WORKDIR}/versions.txt \
+    && echo "BNB_BRANCH: ${BNB_BRANCH}" >> ${COMMON_WORKDIR}/versions.txt
+
+
+
+# ==============================================================================
+# STAGE: Fetch vLLM Source Code (fetch_vllm)
+# Note: Applies a local patch file to support ROCm or fix compatibility issues.
+# ==============================================================================
+
+FROM base_build AS fetch_vllm
 ARG VLLM_REPO
 ARG VLLM_BRANCH
 ARG VLLM_PATCH
+
 COPY ${VLLM_PATCH} vllm.patch
+
 RUN git clone ${VLLM_REPO} \
     && cd vllm \
     && git checkout ${VLLM_BRANCH} \
     && git apply ../vllm.patch
 
-# -----------------------
-# vLLM build stages
+
+# ==============================================================================
+# STAGE: Build vLLM (build_vllm)
+# ==============================================================================
+
 FROM fetch_vllm AS build_vllm
+
 ENV CCACHE_DIR=/root/.cache/ccache
-ARG ARG_PYTORCH_ROCM_ARCH
-ENV PYTORCH_ROCM_ARCH=${ARG_PYTORCH_ROCM_ARCH:-${PYTORCH_ROCM_ARCH}}
+ARG PYTORCH_ROCM_ARCH
+ENV PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH}
+
 # Build vLLM
 RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
     pip install -U packaging 'cmake<4' ninja wheel 'setuptools<80' pybind11 Cython
+
 RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
     --mount=type=cache,id=ccache,target=/root/.cache/ccache \
     cd vllm \
@@ -49,26 +167,34 @@ RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
     && python3 setup.py clean --all  \
     && python3 setup.py bdist_wheel --dist-dir=dist
 
+
+# ==============================================================================
+# STAGE: Export vLLM Artifacts (export_vllm)
+# ==============================================================================
+
 FROM scratch AS export_vllm
+
 ARG COMMON_WORKDIR
+
 COPY --from=build_vllm ${COMMON_WORKDIR}/vllm/dist/*.whl /
 COPY --from=build_vllm ${COMMON_WORKDIR}/vllm/requirements /requirements
 COPY --from=build_vllm ${COMMON_WORKDIR}/vllm/benchmarks /benchmarks
 COPY --from=build_vllm ${COMMON_WORKDIR}/vllm/tests /tests
 COPY --from=build_vllm ${COMMON_WORKDIR}/vllm/examples /examples
 
-FROM ${VLLM_BASE_IMAGE} AS base_vllm
 
-# -----------------------
-# Final vLLM image
+# ==============================================================================
+# STAGE: Final Image (final)
+# ==============================================================================
+
 FROM ${BASE_IMAGE} AS final
 
 RUN pip install --upgrade huggingface-hub[cli]
 
-# Install vLLM
-RUN --mount=type=bind,from=base_vllm,src=/install-dependencies,target=/install \
+RUN --mount=type=bind,from=final_build,src=/install-dependencies,target=/install \
     --mount=type=cache,id=pip,target=/root/.cache/pip \
     pip install /install/*.whl
+
 RUN --mount=type=bind,from=export_vllm,src=/,target=/install \
     --mount=type=cache,id=pip,target=/root/.cache/pip \
     pip install /install/*.whl
