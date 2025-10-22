@@ -75,8 +75,8 @@ One important file is `.vllm/.env` which can be used to pass environment variabl
 export HF_TOKEN=...
 
 # pytorch tunable options (not sure if they work properly with vllm)
-export PYTORCH_TUNABLEOP_ENABLED=1
-export PYTORCH_TUNABLEOP_TUNING=1
+export PYTORCH_TUNABLEOP_ENABLED=0
+export PYTORCH_TUNABLEOP_TUNING=0
 export PYTORCH_TUNABLEOP_FILENAME=/root/.vllm/pytorch_tunables.csv
 
 # miopen settings for reducing start-up times (specifically useful if using multimodal models since the visual layers are retuned by default when the resolution changes)
