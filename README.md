@@ -33,7 +33,7 @@ vllm --help
 ```
 
 ### Building from source
-Building the vllm images will take around 1-2h to build and over 20GB of space.
+Building the vllm images will take around 10-30m to build and around 30GB of space (of which ROCM alone takes over 28GB). In the future, I'll see if this can be reduced.
 
 Once you are done with building your image (and don't wish to rebuild it later on), you can run `podman image prune` in order to remove the intermediate build stage. This will free up some space. *This command will drop untagged images which are not used by any containers; you were warned.*
 
