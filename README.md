@@ -24,7 +24,7 @@ Once downloaded, run the following:
 export VLLM_IMAGE_NAME="itterative/vllm:v0.11.1"
 
 # then build your image
-podman build -t $VLLM_IMAGE_NAME -f vllm/docker/Dockerfile.rocm_prebuilt .
+podman build -t $VLLM_IMAGE_NAME -f docker/Dockerfile.rocm_prebuilt .
 
 # copy the executables
 cp hacks/bin/vllm ~/.local/bin/vllm

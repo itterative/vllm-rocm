@@ -24,13 +24,11 @@ RUN apt-get update -y \
     && python3 --version && python3 -m pip --version
 
 FROM base AS dependencies
-COPY hacks/requirements.txt /app/requirements.txt
 COPY vllm/* /app/dependencies/
 
 FROM base AS final
 RUN --mount=type=bind,from=dependencies,src=/app,target=/install \
     (find /install/dependencies -type f -name '*.whl' | grep -vP '/vllm-' | xargs pip install) \
-    && pip install -r /install/requirements.txt \
     && pip install /install/dependencies/vllm*.whl \
     && cp /install/dependencies/versions.txt /app/versions.txt
 
