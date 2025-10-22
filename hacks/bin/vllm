@@ -2,7 +2,7 @@
 
 set -e
 
-VLLM_IMAGE_NAME=${VLLM_IMAGE_NAME:-itterative/vllm:v0.11.1-bitsandbytes}
+VLLM_IMAGE_NAME=${VLLM_IMAGE_NAME:-itterative/vllm:v0.11.1}
 VLLM_CONTAINER_NAME="vllm"
 
 if command -v docker >/dev/null 2>&1; then
